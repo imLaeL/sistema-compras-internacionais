@@ -41,7 +41,7 @@ public class Compra {
     private BigDecimal valorFinalBRL;
 
     @Column(nullable = false)
-    private LocalDate dataCotacao;
+    private LocalDateTime dataCotacao;
 
     @Column(nullable = false)
     private LocalDateTime dataCompra;
