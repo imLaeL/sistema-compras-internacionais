@@ -38,7 +38,7 @@ public class CompraMapper {
                 compra.getValorFinalBRL(),
                 compra.getDataCotacao(),
                 compra.getDataCompra(),
-                clienteMapper.toResponseDTO(compra.getCliente())
+                clienteMapper.toResponse(compra.getCliente())
         );
     }
 }
