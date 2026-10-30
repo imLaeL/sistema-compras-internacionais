@@ -7,7 +7,6 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -41,7 +40,7 @@ public class Compra {
     private BigDecimal valorFinalBRL;
 
     @Column(nullable = false)
-    private LocalDate dataCotacao;
+    private LocalDateTime dataCotacao;
 
     @Column(nullable = false)
     private LocalDateTime dataCompra;
