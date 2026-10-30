@@ -1,10 +1,12 @@
 package com.projeto_pos.compras_internacionais.mappers;
 
-import com.projeto_pos.compras_internacionais.dto.Compra.CompraRequest;
 import com.projeto_pos.compras_internacionais.dto.Compra.CompraResponse;
+import com.projeto_pos.compras_internacionais.dto.Compra.SimulacaoResponse;
 import com.projeto_pos.compras_internacionais.model.Cliente;
 import com.projeto_pos.compras_internacionais.model.Compra;
 import org.springframework.stereotype.Component;
+
+import java.time.LocalDateTime;
 
 @Component
 public class CompraMapper {
@@ -16,12 +18,20 @@ public class CompraMapper {
     }
 
     public Compra toEntity(
-            CompraRequest dto,
-            Cliente cliente
+            SimulacaoResponse calculo,
+            Cliente cliente,
+            LocalDateTime dataCompra
     ) {
         Compra compra = new Compra();
 
-        compra.setValorUSD(dto.valorUSD());
+        compra.setValorUSD(calculo.valorUSD());
+        compra.setCotacaoUtilizada(calculo.cotacaoUtilizada());
+        compra.setDataCotacao(calculo.dataCotacao());
+        compra.setValorConvertido(calculo.valorConvertido());
+        compra.setTaxaServico(calculo.taxaServico());
+        compra.setTributoSimulado(calculo.tributoSimulado());
+        compra.setValorFinalBRL(calculo.valorFinalBRL());
+        compra.setDataCompra(dataCompra);
         compra.setCliente(cliente);
 
         return compra;

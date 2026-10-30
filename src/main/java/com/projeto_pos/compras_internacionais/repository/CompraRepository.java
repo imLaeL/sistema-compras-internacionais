@@ -7,9 +7,12 @@ import org.springframework.data.repository.query.Param;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 public interface CompraRepository extends JpaRepository<Compra, UUID> {
+
+    List<Compra> findByClienteIdOrderByDataCompraDesc(UUID clienteId);
 
     @Query("""
         SELECT COALESCE(SUM(c.valorFinalBRL), 0)
