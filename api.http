@@ -1,0 +1,249 @@
+@baseUrl = http://localhost:8080
+
+### Clientes do seed (V2__seed_clientes.sql):
+###   Ana Souza    11111111-1111-1111-1111-111111111111  (compras válidas)
+###   Bruno Lima   22222222-2222-2222-2222-222222222222  (estouro de limite, nunca recebe compra)
+###   Carla Mendes 33333333-3333-3333-3333-333333333333  (sem compras)
+
+### 0. Preparar ids e consultar o limite da Carla, que não tem compras (200)
+< {%
+  client.global.set("anaId", "11111111-1111-1111-1111-111111111111");
+  client.global.set("brunoId", "22222222-2222-2222-2222-222222222222");
+  client.global.set("carlaId", "33333333-3333-3333-3333-333333333333");
+%}
+GET {{baseUrl}}/clientes/33333333-3333-3333-3333-333333333333/limite
+
+> {%
+  client.assert(response.status === 200, "esperado 200");
+  client.assert(response.body.limiteMensal === 10000, "limite mensal deveria ser 10000");
+  client.assert(response.body.totalUtilizado === 0, "Carla não tem compras");
+  client.assert(response.body.saldoDisponivel === 10000, "saldo deveria ser o limite inteiro");
+%}
+
+### ---------------- Simulação ----------------
+
+### RN02–RN05 — simular US$ 200,00: taxa de 2% (200, nada é gravado)
+POST {{baseUrl}}/compras/simular
+Content-Type: application/json
+
+{
+  "valorUSD": 200.00
+}
+
+> {%
+  const b = response.body;
+  const close = (a, e) => Math.abs(a - e) < 0.011;
+  const convertido = 200 * b.cotacaoUtilizada;
+  client.assert(response.status === 200, "esperado 200");
+  client.assert(b.cotacaoUtilizada > 0, "cotação deveria ser positiva");
+  client.assert(b.dataCotacao, "dataCotacao ausente");
+  client.assert(close(b.valorConvertido, convertido), "RN02: valorConvertido = valorUSD × cotação");
+  client.assert(close(b.taxaServico, convertido * 0.02), "RN03: taxa deveria ser 2% para valorUSD ≥ 100");
+  client.assert(close(b.tributoSimulado, convertido * 0.10), "RN04: tributo deveria ser 10%");
+  client.assert(close(b.valorFinalBRL, b.valorConvertido + b.taxaServico + b.tributoSimulado), "RN05: valor final");
+%}
+
+### RN03 — simular US$ 99,99: taxa de 5% (200)
+POST {{baseUrl}}/compras/simular
+Content-Type: application/json
+
+{
+  "valorUSD": 99.99
+}
+
+> {%
+  const b = response.body;
+  client.assert(response.status === 200, "esperado 200");
+  client.assert(Math.abs(b.taxaServico - b.valorConvertido * 0.05) < 0.011, "RN03: taxa deveria ser 5% para valorUSD < 100");
+%}
+
+### RN03 — simular US$ 100,00 (limite exato): taxa de 2% (200)
+POST {{baseUrl}}/compras/simular
+Content-Type: application/json
+
+{
+  "valorUSD": 100.00
+}
+
+> {%
+  const b = response.body;
+  client.assert(response.status === 200, "esperado 200");
+  client.assert(Math.abs(b.taxaServico - b.valorConvertido * 0.02) < 0.011, "RN03: US$ 100 já deveria usar 2%");
+%}
+
+### RN01 — cotação enviada no corpo é ignorada; vale o ask da AwesomeAPI (200)
+POST {{baseUrl}}/compras/simular
+Content-Type: application/json
+
+{
+  "valorUSD": 200.00,
+  "cotacaoUtilizada": 1.00
+}
+
+> {%
+  client.assert(response.status === 200, "esperado 200");
+  client.assert(response.body.cotacaoUtilizada !== 1, "RN01: API aceitou cotação do cliente");
+%}
+
+### Simular com valor zero (400 com detalhes)
+POST {{baseUrl}}/compras/simular
+Content-Type: application/json
+
+{
+  "valorUSD": 0
+}
+
+> {%
+  client.assert(response.status === 400, "esperado 400");
+  client.assert(response.body.codigo === "DADOS_INVALIDOS", "código de erro inesperado");
+  client.assert(response.body.detalhes.length > 0, "detalhes de validação ausentes");
+%}
+
+### Simular com mais de 2 casas decimais (400)
+POST {{baseUrl}}/compras/simular
+Content-Type: application/json
+
+{
+  "valorUSD": 20.555
+}
+
+> {% client.assert(response.status === 400, "esperado 400"); %}
+
+### ---------------- Compras ----------------
+
+### Registrar compra de US$ 20,00 para a Ana (201)
+### Valor baixo de propósito: dá para rodar o arquivo várias vezes no mês sem estourar o limite.
+### Para zerar o histórico: docker compose down -v && docker compose up -d
+POST {{baseUrl}}/compras
+Content-Type: application/json
+
+{
+  "clienteId": "{{anaId}}",
+  "valorUSD": 20.00
+}
+
+> {%
+  const b = response.body;
+  client.assert(response.status === 201, "compra não criada");
+  client.assert(b.id, "id não gerado");
+  client.assert(b.cliente.id === client.global.get("anaId"), "compra associada ao cliente errado");
+  client.assert(Math.abs(b.taxaServico - b.valorConvertido * 0.05) < 0.011, "RN03: taxa deveria ser 5%");
+  client.assert(b.dataCompra, "dataCompra ausente");
+  client.global.set("compraId", b.id);
+  client.global.set("compraValorFinal", String(b.valorFinalBRL));
+  client.global.set("compraCotacao", String(b.cotacaoUtilizada));
+%}
+
+### RN07 — histórico da Ana traz a compra com os valores gravados (200)
+GET {{baseUrl}}/clientes/{{anaId}}/compras
+
+> {%
+  client.assert(response.status === 200, "esperado 200");
+  const compra = response.body.find(c => c.id === client.global.get("compraId"));
+  client.assert(compra, "compra não aparece no histórico");
+  client.assert(String(compra.valorFinalBRL) === client.global.get("compraValorFinal"), "RN07: valor final recalculado");
+  client.assert(String(compra.cotacaoUtilizada) === client.global.get("compraCotacao"), "RN07: cotação recalculada");
+%}
+
+### RN06 — limite da Ana: total do mês + saldo = 10000 (200)
+GET {{baseUrl}}/clientes/{{anaId}}/limite
+
+> {%
+  const b = response.body;
+  client.assert(response.status === 200, "esperado 200");
+  client.assert(b.totalUtilizado >= Number(client.global.get("compraValorFinal")), "total não inclui a compra");
+  client.assert(Math.abs(b.totalUtilizado + b.saldoDisponivel - 10000) < 0.011, "total + saldo deveria ser 10000");
+%}
+
+### RN06 + RN08 — compra de US$ 5.000,00 estoura o limite do Bruno (422, nada é gravado)
+POST {{baseUrl}}/compras
+Content-Type: application/json
+
+{
+  "clienteId": "{{brunoId}}",
+  "valorUSD": 5000.00
+}
+
+> {%
+  client.assert(response.status === 422, "esperado 422");
+  client.assert(response.body.codigo === "LIMITE_MENSAL_EXCEDIDO", "código de erro inesperado");
+%}
+
+### RN08 — compra recusada não foi persistida (200, histórico do Bruno vazio)
+GET {{baseUrl}}/clientes/{{brunoId}}/compras
+
+> {%
+  client.assert(response.status === 200, "esperado 200");
+  client.assert(response.body.length === 0, "RN08: compra recusada foi gravada");
+%}
+
+### ---------------- Erros ----------------
+
+### Cliente inexistente na compra (404)
+POST {{baseUrl}}/compras
+Content-Type: application/json
+
+{
+  "clienteId": "00000000-0000-0000-0000-000000000000",
+  "valorUSD": 20.00
+}
+
+> {%
+  client.assert(response.status === 404, "esperado 404");
+  client.assert(response.body.codigo === "CLIENTE_NAO_ENCONTRADO", "código de erro inesperado");
+%}
+
+### Compra sem clienteId e com valor negativo (400 com dois detalhes)
+POST {{baseUrl}}/compras
+Content-Type: application/json
+
+{
+  "valorUSD": -10
+}
+
+> {%
+  client.assert(response.status === 400, "esperado 400");
+  client.assert(response.body.detalhes.length === 2, "esperado um detalhe por campo inválido");
+%}
+
+### clienteId que não é UUID (400)
+POST {{baseUrl}}/compras
+Content-Type: application/json
+
+{
+  "clienteId": "abc",
+  "valorUSD": 20.00
+}
+
+> {%
+  client.assert(response.status === 400, "esperado 400");
+  client.assert(response.body.codigo === "CORPO_INVALIDO", "código de erro inesperado");
+%}
+
+### Histórico de cliente inexistente (404)
+GET {{baseUrl}}/clientes/00000000-0000-0000-0000-000000000000/compras
+
+> {% client.assert(response.status === 404, "esperado 404"); %}
+
+### Limite com id inválido na rota (400)
+GET {{baseUrl}}/clientes/abc/limite
+
+> {%
+  client.assert(response.status === 400, "esperado 400");
+  client.assert(response.body.codigo === "PARAMETRO_INVALIDO", "código de erro inesperado");
+%}
+
+### 503 — AwesomeAPI indisponível
+### PRÉ-REQUISITO MANUAL: suba a aplicação apontando para uma porta sem nada escutando:
+###   INTEGRATIONS_AWESOMEAPI_URL=http://localhost:9999 ./mvnw spring-boot:run
+POST {{baseUrl}}/compras/simular
+Content-Type: application/json
+
+{
+  "valorUSD": 200.00
+}
+
+> {%
+  client.assert(response.status === 503, "esperado 503");
+  client.assert(response.body.codigo === "COTACAO_INDISPONIVEL", "código de erro inesperado");
+%}
