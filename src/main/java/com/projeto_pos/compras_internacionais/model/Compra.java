@@ -22,7 +22,7 @@ public class Compra {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @Column(nullable = false)
+    @Column(name = "valor_usd", nullable = false)
     private BigDecimal valorUSD;
 
     @Column(nullable = false)
@@ -37,11 +37,11 @@ public class Compra {
     @Column(nullable = false)
     private BigDecimal tributoSimulado;
 
-    @Column(nullable = false)
+    @Column(name = "valor_final_brl", nullable = false)
     private BigDecimal valorFinalBRL;
 
     @Column(nullable = false)
-    private LocalDateTime dataCotacao;
+    private LocalDate dataCotacao;
 
     @Column(nullable = false)
     private LocalDateTime dataCompra;
